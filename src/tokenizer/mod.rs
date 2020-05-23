@@ -1,4 +1,23 @@
+//! A trait and some implementation of Tokenizer
+//! 
+//! This module is where the [Tokenizer](trait.Tokenizer.html) trait is defined.
+//! It contains sub-modules that actually implement the trait for particular language.
+//! 
+//! Current list of sample tokenizer implementation:
+//! - English
+//! - Thai
+
+#[cfg(not(feature="single-thread"))]
 use std::sync::{Arc, RwLock, Weak};
+
+#[cfg(feature="single-thread")]
+use std::{cell::RefCell, rc::{Rc, Weak}};
+
+#[cfg(not(feature="single-thread"))]
+type MultiOwn<T> = Arc<RwLock<T>>;
+
+#[cfg(feature="single-thread")]
+type MultiOwn<T> = Rc<RefCell<T>>;
 
 /// Currently supported tree operation.
 /// 
@@ -13,13 +32,22 @@ use std::sync::{Arc, RwLock, Weak};
 pub trait TreeOp<T> {
     /// Add a child node to tree. It will increment level but it will not increment unknown_count.
     fn add_child(self, value: T) -> Self;
+
+    /// Get a level of node. Root node will have level 0. Child of root will have level 1 and so on.
+    fn level(&self) -> usize;
+
+    /// Consume itself and return a `Vec` that have a value from root till this node.
+    /// It will only have all the node value on this branch. All sibling nodes
+    /// are excluded. The childs of this node are also excluded.
+    fn into_vec(self) -> Vec<T>;
 }
 
 /// A Tree node that hold possibles tokenization result.
 /// 
 /// The relation between parent and child node in Rust requires either `Rc` or `Arc`.
-/// `Rc` is not thread safe. We don't know whether user want to pass this tree to other thread.
-/// Thus, we need to wrap it in `Arc`.
+/// There's two feature gate to control this.
+/// - multi-thread - It will wrap this TreeNode in Arc<RwLock<TreeNode<T>>>
+/// - single-thread - It will wrap this TreeNode in `Rc<RefCell<TreeNode<T>>>`
 /// 
 /// Rust prohibit cyclic relationship. So either parent or child need to hold a `Weak` container type.
 /// In current design, we choose to make a parent hold a `Weak` reference to childs. This is to make
@@ -29,8 +57,8 @@ pub trait TreeOp<T> {
 /// 
 /// Since both `Arc` and `Rc` only allow share immutable owned value but we need to add child node.
 /// We need to wrap it inside interior mutability kind of type. It's either `RefCell`, `Mutex`, or `RwLock`.
-/// We don't know if user will need to pass this tree to any other thread so we need a thread safe type.
-/// There can be multiple reader at the same times so it make more sense to put the value in `RwLock`.
+/// As per above feature gate description, for `multi-thread`, it'll use `RwLock`. For `single-thread`,
+/// it'll use `RefCell`.
 /// 
 /// The node shall also know their own level so user don't have to traverse entire tree to find out the
 /// min and max depth of the tree. They only need to check on every leaves nodes.
@@ -43,14 +71,18 @@ pub(crate) struct TreeNode<T> {
     value: Option<T>,
 
     /// Reference to parent node. If child node is not drop, the parent will always live.
-    parent: Option<Arc<RwLock<TreeNode<T>>>>,
+    parent: Option<MultiOwn<TreeNode<T>>>,
     /// Reference to childs of current node. It is possible that the child is already dropped.
-    childs: Vec<Weak<RwLock<TreeNode<T>>>>
+    #[cfg(not(feature="single-thread"))]
+    childs: Vec<Weak<RwLock<TreeNode<T>>>>,
+    #[cfg(feature="single-thread")]
+    childs: Vec<Weak<RefCell<TreeNode<T>>>>
 }
 
 impl<T> TreeNode<T> {
     /// Since every tree operation require wrapping itself in `Arc<RwLock<>>`, it would
     /// make user have easier usage by simply return `Arc<RwLock<TreeNode<T>>>`.
+    #[cfg(not(feature="single-thread"))]
     fn root() -> Arc<RwLock<TreeNode<T>>> {
         Arc::new(RwLock::new(TreeNode {
             level: 0,
@@ -60,13 +92,26 @@ impl<T> TreeNode<T> {
             childs: Vec::new()
         }))
     }
+    /// Since every tree operation require wrapping itself in `Rc<RefCell<>>`, it would
+    /// make user have easier usage by simply return `Rc<RefCell<TreeNode<T>>>`.
+    #[cfg(feature="single-thread")]
+    fn root() -> Rc<RefCell<TreeNode<T>>> {
+        Rc::new(RefCell::new(TreeNode {
+            level: 0,
+            value: None,
+
+            parent: None,
+            childs: Vec::new()
+        }))
+    }
 }
 
-/// Directly implement `TreeOp<T>` for `Arc<RwLock<TreeNode<T>>>` so caller doesn't need
-/// to toggle read and write lock at their end. The method will transparently do it and
-/// release all the locks it required inside the method.
-impl<T> TreeOp<T> for Arc<RwLock<TreeNode<T>>> {
-    fn add_child(self, value: T) -> Arc<RwLock<TreeNode<T>>> {
+/// Directly implement `TreeOp<T>` for both `Arc<RwLock<TreeNode<T>>>` and 
+/// `Rc<RefCell<TreeNode<T>>>` so caller can have easy access to some of
+/// node properties.
+impl<T> TreeOp<T> for MultiOwn<TreeNode<T>> where T: Copy {
+    #[cfg(not(feature="single-thread"))]
+    fn add_child(self, value: T) -> MultiOwn<TreeNode<T>> {
         let level = self.read().unwrap().level;
         let child = Arc::new(RwLock::new(TreeNode {
             level: level + 1,
@@ -74,9 +119,38 @@ impl<T> TreeOp<T> for Arc<RwLock<TreeNode<T>>> {
             parent: Some(Arc::clone(&self)),
             childs: Vec::new()
         }));
+
         self.write().unwrap().childs.push(Arc::downgrade(&child));
 
         child
+    }
+    #[cfg(feature="single-thread")]
+    fn add_child(self, value: T) -> MultiOwn<TreeNode<T>> {
+        let level = self.borrow().level;
+        let child = Rc::new(RefCell::new(TreeNode {
+            level: level + 1,
+            value: Some(value),
+            parent: Some(Rc::clone(&self)),
+            childs: Vec::new()
+        }));
+
+        self.borrow_mut().childs.push(Rc::downgrade(&child));
+
+        child
+    }
+
+    fn level(&self) -> usize {
+        #[cfg(not(feature="single-thread"))]
+        return self.read().unwrap().level;
+        #[cfg(feature="single-thread")]
+        return self.borrow().level;
+    }
+
+    fn into_vec(self) -> Vec<T> {
+        #[cfg(not(feature="single-thread"))]
+        return (&*self.read().unwrap()).into();
+        #[cfg(feature="single-thread")]
+        return (&*self.borrow()).into();
     }
 }
 
@@ -91,8 +165,19 @@ impl<T> std::convert::From<&TreeNode<T>> for Vec<T> where T: Copy {
     fn from(node: &TreeNode<T>) -> Vec<T> {
         let mut v = Vec::with_capacity(node.level);
         
-        fn traverse_tree<T>(node: &Arc<RwLock<TreeNode<T>>>, vec: &mut Vec<T>) where T: Copy {
+        #[cfg(not(feature="single-thread"))]
+        fn traverse_tree<T>(node: &MultiOwn<TreeNode<T>>, vec: &mut Vec<T>) where T: Copy {
             let actual_node = node.read().unwrap();
+            
+            if let Some(ref parent) = actual_node.parent {
+                traverse_tree(parent, vec);
+                // Add value here as it is not a root node. 
+                vec.push(*actual_node.value.as_ref().unwrap());
+            }
+        }
+        #[cfg(feature="single-thread")]
+        fn traverse_tree<T>(node: &MultiOwn<TreeNode<T>>, vec: &mut Vec<T>) where T: Copy {
+            let actual_node = node.borrow();
             
             if let Some(ref parent) = actual_node.parent {
                 traverse_tree(parent, vec);
@@ -115,6 +200,7 @@ impl<T> std::convert::From<&TreeNode<T>> for Vec<T> where T: Copy {
     }
 }
 
+/// A trait that all Tokenizer should implement.
 pub trait Tokenizer {
     /// Tokenize given `text` and return a `Vec<&str>` where each `&str` inside
     /// a `Vec` is a slice from given text.

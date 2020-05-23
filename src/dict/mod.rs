@@ -1,3 +1,13 @@
+//! A dictionary data structure and some utilities functions to operate on dic.
+//! 
+//! The most important part is
+//! - [Dict](struct.Dict.html) - A mutable dictionary for composing a dictionary by using `Node`.
+//! - [SizedDict](struct.SizedDict.html) - A finalized dictionary which shall not be modified.
+//! - [Node](struct.Node.html) - A mutable Node. It is essential part of dictionary.
+//! - [SizedNode](struct.SizedNode.html) - A finalized node. It shall not be modified.
+//! - [terminals_prefix](fn.terminals_prefix.html) - A function that take slice of 
+//! [SizedNode](struct.SizedNode.html) and attempt to find all possible matched entries.
+
 /// Find a node that has longest common prefix matched with given value.
 /// It return index of the node and the length of the matched.
 /// It assume that the node is sorted in ascending order.

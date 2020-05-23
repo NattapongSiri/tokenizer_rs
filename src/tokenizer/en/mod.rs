@@ -1,5 +1,9 @@
+//! A whitespace based word tokenizer.
+//! 
+//! It split each word by using white space, nothing else is done.
+
 /// White space based tokenizer. It split word based on white space.
-struct Tokenizer;
+pub struct Tokenizer;
 
 // /// Common acronym. This should be useful for sentence tokenizer.
 // const acronym: &'static [&'static str] = &[

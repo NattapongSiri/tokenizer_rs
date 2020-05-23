@@ -1,10 +1,11 @@
-pub mod dict;
-pub mod tokenizer;
+//! tokenizer implementation, currently target for Thai language
+//! 
+//! It re-export two main module in root module.
+//! - `en` - A space based tokenizer.
+//! - `th` - A dictionary based tokenizer.
+mod dict;
+mod tokenizer;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+pub use tokenizer::Tokenizer;
+pub use tokenizer::en;
+pub use tokenizer::th;

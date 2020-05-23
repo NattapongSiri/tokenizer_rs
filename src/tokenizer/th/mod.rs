@@ -1,5 +1,15 @@
+//! Dictionary based Thai word tokenizer
+//! 
+//! It uses Dictionary to lookup for a known word. If there's multiple
+//! possible ways to tokenize words, it choose a result that has least number of words.
+//! This is known as "maximum matching" algorithm. It is one of the most common use
+//! algorithm that produce acceptable quality.
+//! 
+//! It can handle some unknown words. It does so by minimizing number of characters 
+//! that need to be took off from the text until a known word is found. 
+
 use crate::dict::{SizedNode, terminals_prefix};
-use std::sync::{Arc, RwLock};
+use super::MultiOwn;
 use super::{TreeOp, TreeNode};
 
 /// Extra metadata required to get a proper tokenization on Thai text.
@@ -20,7 +30,15 @@ struct LeafNode<T> {
 /// - `value` - A string to be parsed by given dictionary.
 /// - `parent` - A [TreeNode](struct.TreeNode.html) that will be root node of all the parsed unit
 /// - `leaves` - A Vec contains all the possible leaves nodes.
-fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: Arc<RwLock<TreeNode<&'a str>>>, leaves: &mut Vec<LeafNode<Arc<RwLock<TreeNode<&'a str>>>>>) {
+fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: MultiOwn<TreeNode<&'a str>>, leaves: &mut Vec<LeafNode<MultiOwn<TreeNode<&'a str>>>>) {
+    #[cfg(not(feature="single-thread"))]
+    fn add_child<'a>(parent: &MultiOwn<TreeNode<&'a str>>, value: &'a str, upto: usize) -> MultiOwn<TreeNode<&'a str>> {
+        std::sync::Arc::clone(parent).add_child(&value[..upto])
+    }
+    #[cfg(feature="single-thread")]
+    fn add_child<'a>(parent: &MultiOwn<TreeNode<&'a str>>, value: &'a str, upto: usize) -> MultiOwn<TreeNode<&'a str>> {
+        std::rc::Rc::clone(parent).add_child(&value[..upto])
+    }
     /// Consume a portion of value until either entire value is consumed or token(s) are found.
     /// 
     /// If it consumed entire value, it will add a leaf node into leaves vec.
@@ -30,7 +48,7 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: Arc<RwLock<
     /// 
     /// In anycase, it will update consumed_bytes but not accumulated_unknown_bytes.
     #[inline(always)]
-    fn consume_unknown<'a>(nodes: &[SizedNode], value: &mut &'a str, accumulated_unknown_bytes: usize, consumed_bytes: &mut usize, parent: &mut Arc<RwLock<TreeNode<&'a str>>>, results: &mut Vec<usize>, leaves: &mut Vec<LeafNode<Arc<RwLock<TreeNode<&'a str>>>>>) {
+    fn consume_unknown<'a>(nodes: &[SizedNode], value: &mut &'a str, accumulated_unknown_bytes: usize, consumed_bytes: &mut usize, parent: &mut MultiOwn<TreeNode<&'a str>>, results: &mut Vec<usize>, leaves: &mut Vec<LeafNode<MultiOwn<TreeNode<&'a str>>>>) {
         // Apply some algorithm to extract unknown word and repeatly re-evaluate if the remain
         // from algorithm is a known word
         let mut chars = value.chars(); // Take a chars iterator and consume all repeating chars
@@ -43,7 +61,7 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: Arc<RwLock<
             if results.len() > 0 {
                 // Found an offset where sub-sequence chars is a known word.
                 // Make a new node and make it parent of sun-sequence of valid words.
-                *parent = Arc::clone(&parent).add_child(&value[..*consumed_bytes]);
+                *parent = add_child(parent, value, *consumed_bytes);
 
                 // Shift value by consumed byte as the unknown word boundary is at consumed bytes.
                 *value = &value[*consumed_bytes..];
@@ -61,7 +79,7 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: Arc<RwLock<
             // Entire value is consumed and no known word found.
             // It mean there's unknown word trailing or entire value is an unknown word.
             // No need to lookup more. Simply make entire value as a single leaf node.
-            let node = Arc::clone(&parent).add_child(&value[..*consumed_bytes]);
+            let node = add_child(parent, value, *consumed_bytes);
             leaves.push(LeafNode {
                 node,
                 unknown_bytes_count: accumulated_unknown_bytes + *consumed_bytes,
@@ -90,7 +108,7 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: Arc<RwLock<
         
         // On each result, it is a known word offset
         results.iter().for_each(|offset| {
-            let node = Arc::clone(&parent).add_child(&value[..(*offset)]);
+            let node = add_child(&parent, value, *offset);
             let remain = &value[(*offset)..];
 
             if remain.len() > 0 {
@@ -125,8 +143,21 @@ impl Tokenizer {
 
 impl crate::tokenizer::Tokenizer for Tokenizer {
     fn tokenize<'b>(&self, value: &'b str) -> Vec<&'b str> {
-        let rough_boundaries = value.split_whitespace();
-        rough_boundaries.into_iter().map(|boundary| {
+        #[cfg(not(feature="single-thread"))]
+        use rayon::iter::ParallelIterator;
+        
+        #[cfg(not(feature="single-thread"))]
+        fn make_iter(raw: &str) -> rayon::str::SplitWhitespace {
+            use rayon::prelude::*;
+
+            raw.par_split_whitespace()
+        }
+        #[cfg(feature="single-thread")]
+        fn make_iter(raw: &str) -> std::str::SplitWhitespace {
+            raw.split_whitespace()
+        }
+
+        make_iter(value).map(|boundary| {
             let mut leaf_nodes = Vec::new();
             let root = TreeNode::root();
             make_result_tree(&self.dict.root, boundary, root, &mut leaf_nodes);
@@ -135,7 +166,7 @@ impl crate::tokenizer::Tokenizer for Tokenizer {
             let mut idx = 0;
             // Maximum matching approach, find a path with least node
             leaf_nodes.iter().enumerate().for_each(|(i, n)| {
-                let level = n.node.read().unwrap().level;
+                let level = n.node.level();
                 let unknown = n.unknown_bytes_count;
 
                 if unknown < min_unknown {
@@ -154,7 +185,7 @@ impl crate::tokenizer::Tokenizer for Tokenizer {
                 }
             });
             let expected_node = leaf_nodes.remove(idx);
-            let result = Vec::from(&*expected_node.node.read().unwrap());
+            let result = expected_node.node.into_vec();
             result
         }).flatten().collect()
     }
