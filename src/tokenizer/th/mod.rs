@@ -134,6 +134,14 @@ impl Tokenizer {
     /// 
     /// In this implementation, we chose Dictionary approach and use "maximum matching" algorithm.
     /// The quality of tokenization depends on quality of dictionary.
+    /// 
+    /// The dictionary should be a text file where each line in text file must be individual word.
+    /// The content of text file should have following format:
+    /// ```txt
+    /// กรุงเทพ
+    /// กรุงเทพมหานคร
+    /// จังหวัด
+    /// ```
     pub fn new<P: AsRef<std::path::Path>>(dict_path: P) -> std::io::Result<Tokenizer> {
         Ok(Tokenizer {
             dict: crate::dict::Dict::load_txt(dict_path)?.into()
