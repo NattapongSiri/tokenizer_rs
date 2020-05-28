@@ -122,6 +122,166 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: MultiOwn<Tr
     }
 }
 
+fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
+    /// There's three possible states in one vertex
+    #[derive(Clone)]
+    enum VertexState {
+        /// A vertex that nobody visit yet
+        None,
+        /// A vertex that is recognized in advance while attempting to isloate unknown word
+        Cache(Vec<usize>),
+        /// A vertex that is visited by breadth-first-search strategy
+        Some(Vec<usize>)
+    }
+
+    impl Default for VertexState {
+        fn default() -> VertexState {
+            VertexState::None
+        }
+    }
+
+    impl VertexState {
+        pub fn take(&mut self) -> Option<Vec<usize>> {
+            let value = std::mem::take(self);
+            match value {
+                VertexState::None => None,
+                VertexState::Cache(v) | VertexState::Some(v) => {
+                    Some(v)
+                },
+            }
+        }
+    }
+
+    fn consume_unknown<'a>(nodes: &[SizedNode], value: &str, offset: usize, results: &mut Vec<usize>) -> usize {
+        // Apply some algorithm to extract unknown word and repeatly re-evaluate if the remain
+        // from algorithm is a known word
+        let mut consumed_bytes = offset;
+        let mut chars = value[consumed_bytes..].chars(); // Take a chars iterator and consume all repeating chars
+
+        while let Some(c) = chars.next() {
+            consumed_bytes += c.len_utf8();
+
+            terminals_prefix(nodes, value, consumed_bytes, results);
+            
+            if results.len() > 0 {
+                // stop lookup as known word is found.
+                break;
+            }
+        }
+
+        consumed_bytes
+    }
+
+    let mut vertices = vec![VertexState::None; text.len()];
+    let mut branches = Vec::with_capacity(text.len());
+    let mut queue = std::collections::VecDeque::with_capacity(text.len() / 2);
+    let mut min_unknown = text.len(); // worst case is entire text is unknown
+    let mut min_vertices = text.len(); // current least number of vertices to reach last char of text
+
+    queue.push_back([0, 0, 0, 0]); // previous pointer, current vertex index, unknown bytes count, vertex count
+
+    // Assuming text has at least 2 chars per word
+    let mut result = std::collections::VecDeque::with_capacity(text.len() / 2); 
+
+    let mut i = 0;
+    let mut not_ended = true;
+
+    while i < queue.len() {
+        // Retreive next offset
+        dbg!(i, &queue);
+        let [prev_i, offset, unknown_len, vertex_count] = queue[i];
+        branches.clear();
+
+        match vertices[offset] {
+            VertexState::None => {
+                // Find next prefix from offset
+                terminals_prefix(dict, text, offset, &mut branches);
+
+                // create state of vertex which is Vec that contains offset to vertex
+                let mut vertex = Vec::with_capacity(branches.len());
+
+                for v in branches.iter() {
+                    vertex.push(*v); // add next offset to vertex state
+
+                    if vertex_count < min_vertices { 
+                        // only add to queue if it is better than previous best path
+                        queue.push_back([i, *v, unknown_len, vertex_count + 1]); 
+
+                        if *v >= text.len() {
+                            min_vertices = vertex_count;
+                        }
+                    }
+                }
+
+                if branches.len() > 0 {
+                    // known word case
+                    vertices[offset] = VertexState::Some(vertex);
+                } else {
+                    // No known word match so not even single branch is return
+                    let cur_unknown_length = consume_unknown(dict, text, offset, &mut branches);
+                    if vertex_count < min_vertices {
+                        queue.push_back([i, cur_unknown_length, unknown_len + cur_unknown_length - offset, vertex_count + 1]); // Identified unknown word boundary
+                    }
+                    
+                    vertices[offset] = VertexState::Some(vec![cur_unknown_length]);
+
+                    if cur_unknown_length >= text.len() { // Unknown word is trailing in text
+                        break; // No need to do any futher processing
+                    }
+
+                    // All the returned branches are 1 step ahead of other branch so don't push it to queue yet
+                    // or it will break breadth-first strategy
+                    let mut peeked = branches.clone(); 
+                    peeked.shrink_to_fit(); // The branch size shall never changed. 
+                    vertices[cur_unknown_length] = VertexState::Cache(peeked); 
+                }
+            },
+            VertexState::Cache(_) => {
+                // Reach the peeked branches. Push all these branch into processing queue.
+                let nexts = vertices[offset].take();
+
+                if let Some(nexts) = nexts {
+                    // attempt to add each vertex to processing queue.
+                    for v in nexts.iter() {
+                        queue.push_back([i, *v, unknown_len, vertex_count + 1]);
+
+                        if *v >= text.len() {
+                            // There is a vertex that already reach last char of text.
+                            break
+                        }
+                    }
+                    vertices[offset] = VertexState::Some(nexts); // Change state of vertex to Some
+                }
+            },
+            VertexState::Some(_) => {
+                // We need to update the link back if vertex count is equals and unknown word count is lower. 
+                // So that it pick the path with least unknown word.
+                // Since the result is construct based on queue and best result is a last vertex in queue,
+                // it might point to a path that has more longer unknown token.
+            }
+        }
+
+        i += 1;
+    }
+
+    dbg!(&queue);
+    i = queue.len() - 1; // last element of queue
+    let mut last_offset = text.len();
+    while i > 0 {
+        let [index, offset, _, _] = queue[i];
+        // since offset is an offset of vertex and each vertex position designate a first char of word..
+        result.push_front(&text[offset..last_offset]);
+        last_offset = offset; // move offset to beginning of character
+
+        i = index; // move index to another node in queue
+    }
+
+    // first word
+    result.push_front(&text[0..last_offset]);
+
+    result.into()
+}
+
 /// Dictionary based Thai text tokenizer
 pub struct Tokenizer {
     dict: crate::dict::SizedDict,
@@ -166,35 +326,36 @@ impl crate::tokenizer::Tokenizer for Tokenizer {
         }
 
         make_iter(value).map(|boundary| {
-            let mut leaf_nodes = Vec::new();
-            let root = TreeNode::root();
-            make_result_tree(&self.dict.root, boundary, root, &mut leaf_nodes);
-            let mut min_count = boundary.len(); // worst case length
-            let mut min_unknown = boundary.len(); // Impossible case where each char is treat as unknown token
-            let mut idx = 0;
-            // Maximum matching approach, find a path with least node
-            leaf_nodes.iter().enumerate().for_each(|(i, n)| {
-                let level = n.node.level();
-                let unknown = n.unknown_bytes_count;
+            // let mut leaf_nodes = Vec::new();
+            // let root = TreeNode::root();
+            // make_result_tree(&self.dict.root, boundary, root, &mut leaf_nodes);
+            // let mut min_count = boundary.len(); // worst case length
+            // let mut min_unknown = boundary.len(); // Impossible case where each char is treat as unknown token
+            // let mut idx = 0;
+            // // Maximum matching approach, find a path with least node
+            // leaf_nodes.iter().enumerate().for_each(|(i, n)| {
+            //     let level = n.node.level();
+            //     let unknown = n.unknown_bytes_count;
 
-                if unknown < min_unknown {
-                    min_unknown = unknown;
+            //     if unknown < min_unknown {
+            //         min_unknown = unknown;
 
-                    if level <= min_count {
-                        // New best case, lower unknown and max matched
-                        min_count = level;
-                        idx = i;
-                    }
-                } else {
-                    if level < min_count {
-                        // Subjective case, more unknown tokens but better matched
-                        // Need more sophisticate approach to solve this
-                    }
-                }
-            });
-            let expected_node = leaf_nodes.remove(idx);
-            let result = expected_node.node.into_vec();
-            result
+            //         if level <= min_count {
+            //             // New best case, lower unknown and max matched
+            //             min_count = level;
+            //             idx = i;
+            //         }
+            //     } else {
+            //         if level < min_count {
+            //             // Subjective case, more unknown tokens but better matched
+            //             // Need more sophisticate approach to solve this
+            //         }
+            //     }
+            // });
+            // let expected_node = leaf_nodes.remove(idx);
+            // let result = expected_node.node.into_vec();
+            // result
+            maximum_matching(&self.dict.root, boundary)
         }).flatten().collect()
     }
 }

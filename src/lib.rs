@@ -6,6 +6,6 @@
 mod dict;
 mod tokenizer;
 
-pub use tokenizer::Tokenizer;
-pub use tokenizer::en;
-pub use tokenizer::th;
+pub use self::tokenizer::Tokenizer;
+pub use self::tokenizer::en;
+pub use self::tokenizer::th;

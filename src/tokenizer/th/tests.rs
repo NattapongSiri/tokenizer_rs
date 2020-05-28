@@ -64,7 +64,9 @@ fn test_all_possible_triplet() {
 #[test]
 fn test_unknown_word() {
     let tokenizer = super::Tokenizer::new("data/th.txt").unwrap();
-    let tokens = tokenizer.tokenize("เอากรรมกรที่เอาการเอางาน");
+    let input = "เอากรรมกรที่เอาการเอางาน";
+    dbg!(input.len());
+    let tokens = tokenizer.tokenize(input);
     assert_eq!(tokens, &["เอา", "กรรมกร", "ที่", "เอาการเอางาน"]);
 }
 
