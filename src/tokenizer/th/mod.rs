@@ -13,6 +13,7 @@ use super::MultiOwn;
 use super::{TreeOp, TreeNode};
 
 /// Extra metadata required to get a proper tokenization on Thai text.
+#[allow(dead_code)]
 struct LeafNode<T> {
     /// An actual leaf node on the tree.
     node: T,
@@ -30,6 +31,7 @@ struct LeafNode<T> {
 /// - `value` - A string to be parsed by given dictionary.
 /// - `parent` - A [TreeNode](struct.TreeNode.html) that will be root node of all the parsed unit
 /// - `leaves` - A Vec contains all the possible leaves nodes.
+#[allow(dead_code)]
 fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: MultiOwn<TreeNode<&'a str>>, leaves: &mut Vec<LeafNode<MultiOwn<TreeNode<&'a str>>>>) {
     #[cfg(not(feature="single-thread"))]
     fn add_child<'a>(parent: &MultiOwn<TreeNode<&'a str>>, value: &'a str, upto: usize) -> MultiOwn<TreeNode<&'a str>> {
@@ -174,11 +176,9 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
 
     let mut vertices = vec![VertexState::None; text.len()];
     let mut branches = Vec::with_capacity(text.len());
-    let mut queue = std::collections::VecDeque::with_capacity(text.len() / 2);
-    let mut min_unknown = text.len(); // worst case is entire text is unknown
-    let mut min_vertices = text.len(); // current least number of vertices to reach last char of text
+    let mut queue = Vec::with_capacity(text.len() / 2);
 
-    queue.push_back([0, 0, 0, 0]); // previous pointer, current vertex index, unknown bytes count, vertex count
+    queue.push([0, 0, 0]); // previous pointer, current vertex index, unknown bytes count
 
     // Assuming text has at least 2 chars per word
     let mut result = std::collections::VecDeque::with_capacity(text.len() / 2); 
@@ -186,10 +186,9 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
     let mut i = 0;
     let mut not_ended = true;
 
-    while i < queue.len() {
+    while not_ended {
         // Retreive next offset
-        dbg!(i, &queue);
-        let [prev_i, offset, unknown_len, vertex_count] = queue[i];
+        let [_, offset, unknown_len] = queue[i];
         branches.clear();
 
         match vertices[offset] {
@@ -202,14 +201,11 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
 
                 for v in branches.iter() {
                     vertex.push(*v); // add next offset to vertex state
+                    queue.push([i, *v, unknown_len]);
 
-                    if vertex_count < min_vertices { 
-                        // only add to queue if it is better than previous best path
-                        queue.push_back([i, *v, unknown_len, vertex_count + 1]); 
-
-                        if *v >= text.len() {
-                            min_vertices = vertex_count;
-                        }
+                    if *v >= text.len() {
+                        not_ended = false;
+                        break;
                     }
                 }
 
@@ -219,9 +215,7 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
                 } else {
                     // No known word match so not even single branch is return
                     let cur_unknown_length = consume_unknown(dict, text, offset, &mut branches);
-                    if vertex_count < min_vertices {
-                        queue.push_back([i, cur_unknown_length, unknown_len + cur_unknown_length - offset, vertex_count + 1]); // Identified unknown word boundary
-                    }
+                    queue.push([i, cur_unknown_length, unknown_len + cur_unknown_length - offset]); // Identified unknown word boundary
                     
                     vertices[offset] = VertexState::Some(vec![cur_unknown_length]);
 
@@ -243,10 +237,11 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
                 if let Some(nexts) = nexts {
                     // attempt to add each vertex to processing queue.
                     for v in nexts.iter() {
-                        queue.push_back([i, *v, unknown_len, vertex_count + 1]);
+                        queue.push([i, *v, unknown_len]);
 
                         if *v >= text.len() {
                             // There is a vertex that already reach last char of text.
+                            not_ended = false;
                             break
                         }
                     }
@@ -264,11 +259,27 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
         i += 1;
     }
 
-    dbg!(&queue);
-    i = queue.len() - 1; // last element of queue
-    let mut last_offset = text.len();
+    let last_queue = queue.len() - 1;
+    // Prune remain queue to see if there's any last vertex candidate with lesser unknown word.
+    // Check only up to vertex before last element as last element is currently comparator vertex
+    while i < queue.len() - 1 {
+        let [_, offset, unknown_bytes] = queue[i];
+        match vertices[offset] {
+            VertexState::None | VertexState::Cache(_) => {},
+            VertexState::Some(ref vs) => {
+                if vs.iter().any(|v| {*v >= text.len()}) && unknown_bytes < queue[last_queue][2] {
+                    // There's at least one edge point to last node with lesser unknown_bytes.
+                    // Redirect last vertex reverse link to current vertex instead as it is new best vertex.
+                    queue[last_queue][0] = i;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    let [mut i, mut last_offset, _] = queue[last_queue]; // last element of queue
     while i > 0 {
-        let [index, offset, _, _] = queue[i];
+        let [index, offset, _] = queue[i];
         // since offset is an offset of vertex and each vertex position designate a first char of word..
         result.push_front(&text[offset..last_offset]);
         last_offset = offset; // move offset to beginning of character
