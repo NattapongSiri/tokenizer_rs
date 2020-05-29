@@ -124,7 +124,20 @@ fn make_result_tree<'a>(nodes: &[SizedNode], value: &'a str, parent: MultiOwn<Tr
     }
 }
 
-fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
+/// Maximal matching algorithm with unknown word support.
+/// 
+/// This is an implementation based on concept of maximum matching.
+/// See this [Wikipedia page](https://en.wikipedia.org/wiki/Matching_(graph_theory)#Maximal_matchings) 
+/// for brief explanation of the algorithm.
+/// 
+/// It take a dictionary in form of &[SizedNode] and a text to be tokenized.
+/// # Parameters
+/// - `dict` - A slice of [dict::SizedNode](/tokenizer/dict/struct.SizedNode.html) which
+/// can be obtain from `root` field of [dict::SizedDict](/tokenizer/dict/struct.SizedDict.html).
+/// - `text` - A slice of string to be tokenized.
+/// # Return
+/// A vec contains slice of tokenized word.
+fn maximal_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
     /// There's three possible states in one vertex
     #[derive(Clone)]
     enum VertexState {
@@ -157,6 +170,22 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
         }
     }
 
+    /// Take as least necessary bytes as needed until first known word is found.
+    /// It need a dictionary to identify a known word. It will increment an offset by one character
+    /// until there's a prefix match to a dictionary entry.
+    /// For example, if text is "abcdef" and "ab" is unknown word and "cd" and "cde" is known word in dic
+    /// then this function will put 3, and 4 in `results` vec and return 2 which is unknown word boundary.
+    /// 
+    /// # Parameters
+    /// - `nodes` - A slice of [dict::SizedNode](/tokenizer/dict/struct.SizedNode.html) which
+    /// can be obtain from `root` field of [dict::SizedDict](/tokenizer/dict/struct.SizedDict.html).
+    /// - `value` - A string slice to find an offset of unknown words.
+    /// - `offset` - A position to start isolate an unknown word.
+    /// - `results` - A vec which will store known words that come after the isolated unknown word.
+    /// # Return
+    /// It return an offset boundary of unknown word.
+    /// For example, if text is "abcdef" and "cd" is the only unknown word and offset is 2,
+    /// it will return 4. Caller can directly took slice from `&value[2..4]` to obtains that "cd"
     fn consume_unknown<'a>(nodes: &[SizedNode], value: &str, offset: usize, results: &mut Vec<usize>) -> usize {
         // Apply some algorithm to extract unknown word and repeatly re-evaluate if the remain
         // from algorithm is a known word
@@ -373,7 +402,7 @@ impl crate::tokenizer::Tokenizer for Tokenizer {
             // let expected_node = leaf_nodes.remove(idx);
             // let result = expected_node.node.into_vec();
             // result
-            maximum_matching(&self.dict.root, boundary)
+            maximal_matching(&self.dict.root, boundary)
         }).flatten().collect()
     }
 }
