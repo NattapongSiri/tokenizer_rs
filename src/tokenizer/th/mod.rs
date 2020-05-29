@@ -137,12 +137,15 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
     }
 
     impl Default for VertexState {
+        /// By default, `VertexState` is `None`
         fn default() -> VertexState {
             VertexState::None
         }
     }
 
     impl VertexState {
+        /// Take current value out of this `VertexState` and leave `None` in place.
+        /// If current state is `None`, it return `Option::None`
         pub fn take(&mut self) -> Option<Vec<usize>> {
             let value = std::mem::take(self);
             match value {
@@ -174,8 +177,12 @@ fn maximum_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
         consumed_bytes
     }
 
+    // 2D dynamic vec to simulate word graph
     let mut vertices = vec![VertexState::None; text.len()];
+    // `branches` is reusable vec to temporarily hold possible branch from any particular vertex.
     let mut branches = Vec::with_capacity(text.len());
+    // `queue` is a processing queue of vertex to be processed.
+    // The vertex being pushed to this queue shall make a graph traversal "breadth-first"
     let mut queue = Vec::with_capacity(text.len() / 2);
 
     queue.push([0, 0, 0]); // previous pointer, current vertex index, unknown bytes count
