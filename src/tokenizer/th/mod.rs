@@ -325,7 +325,7 @@ fn maximal_matching<'a>(dict: &[SizedNode], text: &'a str) -> Vec<&'a str> {
 
     // first word
     result.push_front(&text[0..last_offset]);
-
+    
     result.into()
 }
 
@@ -336,6 +336,7 @@ pub struct Tokenizer {
 
 impl Tokenizer {
     /// Construct a Thai tokenizer using given path as a dictionary.
+    /// 
     /// Thai text tokenization rely on dictionary or corpus depending on algorithm being use
     /// to identify a token. 
     /// 
@@ -353,6 +354,28 @@ impl Tokenizer {
         Ok(Tokenizer {
             dict: crate::dict::Dict::load_txt(dict_path)?.into()
         })
+    }
+}
+
+/// Create a tokenizer from slice of `&str` using the slice as dictionary.
+impl From<&[&str]> for Tokenizer {
+    fn from(slice: &[&str]) -> Tokenizer {
+        let mut dict = crate::dict::Dict::new();
+        slice.iter().for_each(|word| {dict.add(word)});
+        Tokenizer {
+            dict: dict.into()
+        }
+    }
+}
+
+/// Create a tokenizer from slice of `&String` using the slice as dictionary.
+impl From<&[&String]> for Tokenizer {
+    fn from(slice: &[&String]) -> Tokenizer {
+        let mut dict = crate::dict::Dict::new();
+        slice.iter().for_each(|word| {dict.add(word)});
+        Tokenizer {
+            dict: dict.into()
+        }
     }
 }
 
