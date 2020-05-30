@@ -379,6 +379,17 @@ impl From<&[&String]> for Tokenizer {
     }
 }
 
+/// Create a tokenizer from slice of `String` using the slice as dictionary.
+impl From<&[String]> for Tokenizer {
+    fn from(slice: &[String]) -> Tokenizer {
+        let mut dict = crate::dict::Dict::new();
+        slice.iter().for_each(|word| {dict.add(word)});
+        Tokenizer {
+            dict: dict.into()
+        }
+    }
+}
+
 impl crate::tokenizer::Tokenizer for Tokenizer {
     fn tokenize<'b>(&self, value: &'b str) -> Vec<&'b str> {
         #[cfg(not(feature="single-thread"))]
