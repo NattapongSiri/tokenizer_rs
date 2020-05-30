@@ -76,3 +76,13 @@ fn test_th_en_word() {
     let tokens = tokenizer.tokenize("การบ้าน  easy มากๆ");
     assert_eq!(tokens, &["การบ้าน", "easy", "มากๆ"]);
 }
+
+#[test]
+fn test_init_by_slice() {
+    use std::io::{BufRead, BufReader};
+    use crate::Tokenizer;
+    let file = BufReader::new(std::fs::File::open("data/th.txt").unwrap());
+    let sources: Vec<String> = file.lines().map(|l| l.unwrap()).collect();
+    let tokenizer = super::Tokenizer::from(sources.as_slice());
+    assert_eq!(vec!["การบ้าน", "กรรมกร"], tokenizer.tokenize("การบ้านกรรมกร"));
+}
