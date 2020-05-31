@@ -19,7 +19,7 @@ Put following line in your `cargo.toml` dependencies section.
 For example:
 ```toml
 [dependencies]
-tokenizer = "^0.1.1"
+tokenizer = "^0.1"
 ```
 It will attempt to use multi-thread to do tokenization.
 

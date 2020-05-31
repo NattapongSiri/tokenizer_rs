@@ -3,9 +3,10 @@ name = "tokenizer"
 description = "Thai text tokenizer"
 keywords = ["Thai", "tokenizer", "text", "word", "tokeniser"]
 categories = ["internationalization", "localization"]
+repository = "https://github.com/NattapongSiri/tokenizer_rs/tree/0.1.1"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
 edition = "2018"
 
