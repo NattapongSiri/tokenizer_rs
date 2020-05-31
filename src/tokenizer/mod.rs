@@ -63,6 +63,7 @@ pub trait TreeOp<T> {
 /// The node shall also know their own level so user don't have to traverse entire tree to find out the
 /// min and max depth of the tree. They only need to check on every leaves nodes.
 #[derive(Debug)]
+#[allow(unused)]
 pub(crate) struct TreeNode<T> {
     /// Level of node in current tree. Root node is at level 0. Childs of root is at level 1.
     level: usize,
@@ -79,10 +80,12 @@ pub(crate) struct TreeNode<T> {
     childs: Vec<Weak<RefCell<TreeNode<T>>>>
 }
 
+#[allow(unused)]
 impl<T> TreeNode<T> {
     /// Since every tree operation require wrapping itself in `Arc<RwLock<>>`, it would
     /// make user have easier usage by simply return `Arc<RwLock<TreeNode<T>>>`.
     #[cfg(not(feature="single-thread"))]
+    #[allow(dead_code)]
     fn root() -> Arc<RwLock<TreeNode<T>>> {
         Arc::new(RwLock::new(TreeNode {
             level: 0,

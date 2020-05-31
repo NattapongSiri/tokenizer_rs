@@ -64,7 +64,9 @@ fn test_all_possible_triplet() {
 #[test]
 fn test_unknown_word() {
     let tokenizer = super::Tokenizer::new("data/th.txt").unwrap();
-    let tokens = tokenizer.tokenize("เอากรรมกรที่เอาการเอางาน");
+    let input = "เอากรรมกรที่เอาการเอางาน";
+    dbg!(input.len());
+    let tokens = tokenizer.tokenize(input);
     assert_eq!(tokens, &["เอา", "กรรมกร", "ที่", "เอาการเอางาน"]);
 }
 
@@ -73,4 +75,14 @@ fn test_th_en_word() {
     let tokenizer = super::Tokenizer::new("data/th.txt").unwrap();
     let tokens = tokenizer.tokenize("การบ้าน  easy มากๆ");
     assert_eq!(tokens, &["การบ้าน", "easy", "มากๆ"]);
+}
+
+#[test]
+fn test_init_by_slice() {
+    use std::io::{BufRead, BufReader};
+    use crate::Tokenizer;
+    let file = BufReader::new(std::fs::File::open("data/th.txt").unwrap());
+    let sources: Vec<String> = file.lines().map(|l| l.unwrap()).collect();
+    let tokenizer = super::Tokenizer::from(sources.as_slice());
+    assert_eq!(vec!["การบ้าน", "กรรมกร"], tokenizer.tokenize("การบ้านกรรมกร"));
 }

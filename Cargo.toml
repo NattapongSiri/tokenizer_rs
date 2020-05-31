@@ -1,7 +1,13 @@
 [package]
 name = "tokenizer"
-version = "0.1.0"
-authors = ["Nattapong Sirilappanich <nattapong.sirilappanich2@ibm.com>"]
+description = "Thai text tokenizer"
+keywords = ["Thai", "tokenizer", "text", "word", "tokeniser"]
+categories = ["internationalization", "localization"]
+repository = "https://github.com/NattapongSiri/tokenizer_rs/tree/0.1.1"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.1.2"
+authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

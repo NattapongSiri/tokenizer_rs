@@ -36,3 +36,9 @@ let tokenizer = th::Tokenizer::new("path/to/dictionary.txt").expect("Dictionary 
 // Assuming dictinoary contains "ภาษาไทย" and "นิดเดียว" but not "ง่าย"
 assert_eq!(tokenizer.tokenize("ภาษาไทยง่ายนิดเดียว"), vec!["ภาษาไทย", "ง่าย", "นิดเดียว"]);
 ```
+
+# Sample implementation using Lexitron dictionary
+I have create a sample of code to calculate F1-score on 10 montecarlo simulation test where each test use a sample size of 200 and keep 10% of that sample out of tokenizer to test the quality of tokenizer when there is 10% unknown word in text.
+
+That [repository](https://github.com/NattapongSiri/tokenizer_demo) use Lexitron dictionary from NECTEC.
+Before you use, you should read their license agreement first.
