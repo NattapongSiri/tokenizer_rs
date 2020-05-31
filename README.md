@@ -42,3 +42,5 @@ I have create a sample of code to calculate F1-score on 10 montecarlo simulation
 
 That [repository](https://github.com/NattapongSiri/tokenizer_demo) use Lexitron dictionary from NECTEC.
 Before you use, you should read their license agreement first.
+
+I have also create a Monte Carlo simulation which took entire dictionary, shuffle it, took 90% of it to create tokenizer, reshuffle it and use all of it to calculate F1 score. The repository can be found [here](https://github.com/NattapongSiri/tokenizer_large_montecarlo_demo)
